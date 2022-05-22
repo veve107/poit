@@ -81,7 +81,6 @@ def test_message(message):
     idsDB = cursor.fetchall()
     fo = open("static/files/test.txt", "r");
     idsFILE = len(fo.readlines())
-    print(idsFILE)
     emit('my_response',
          {'data': message['value'], 'count': session['receive_count'], 'idsDB': idsDB, 'idsFILE': idsFILE, 'initial': 1})
 
@@ -93,20 +92,19 @@ def db_message(message):
     else:
         session['record'] = 'stopDB'
 
-
-@socketio.on('file_event', namespace='/test')
-def file_message(message):   
-    if(message['value'] == 'startFILE'):
-        session['record'] = 'start'   
-    else:
-        session['record'] = 'stopFILE' 
-
 @socketio.on('get_db_event', namespace='/test')
 def get_db_message(message):
     cursor = db.cursor()
     cursor.execute("SELECT hodnoty FROM graph where id = %s", message['db_id'])
     data = cursor.fetchone()
     emit('db_response', {'data': data})
+    
+@socketio.on('file_event', namespace='/test')
+def file_message(message):   
+    if(message['value'] == 'startFILE'):
+        session['record'] = 'start'   
+    else:
+        session['record'] = 'stopFILE' 
 
 @socketio.on('get_file_event', namespace='/test')
 def get_file_message(message):
