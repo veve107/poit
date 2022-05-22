@@ -5,6 +5,7 @@ import MySQLdb
 import time
 import serial
 import configparser as ConfigParser
+import json
 
 async_mode = None
 
@@ -23,27 +24,27 @@ app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode=async_mode)
 thread = None
 thread_lock = Lock() 
+db = MySQLdb.connect(host=myhost,user=myuser,passwd=mypasswd,db=mydb)          
 
 
 def background_thread(args):
     count = 0  
     dataCounter = 0 
     dataList = []  
-    db = MySQLdb.connect(host=myhost,user=myuser,passwd=mypasswd,db=mydb)          
     while True:
         if args:
-          dbV = dict(args).get('db_value')
+            record = dict(args).get('record')
         else:
-          dbV = 'nieco'  
-        print(dbV) 
+          record = 'nieco'  
         print(args)  
-        socketio.sleep(2)
+        socketio.sleep(1.5)
         count += 1
         dataCounter +=1
+        timestamp = time.time() * 1000
         prem = float(ser.readline().decode("utf-8").rstrip())
-        if dbV == 'start':
+        if record == 'start':
           dataDict = {
-            "t": time.time(),
+            "t": timestamp,
             "y": prem,
             }
           dataList.append(dataDict)
@@ -52,15 +53,19 @@ def background_thread(args):
             print(str(dataList))
             fuj = str(dataList).replace("'", "\"")
             print(fuj)
-            cursor = db.cursor()
-            cursor.execute("SELECT MAX(id) FROM graph")
-            maxid = cursor.fetchone()
-            cursor.execute("INSERT INTO graph (id, hodnoty) VALUES (%s, %s)", (maxid[0] + 1, fuj))
-            db.commit()
+            if(record == 'stopDB'):
+                cursor = db.cursor()
+                cursor.execute("SELECT MAX(id) FROM graph")
+                maxid = cursor.fetchone()
+                cursor.execute("INSERT INTO graph (id, hodnoty) VALUES (%s, %s)", (maxid[0] + 1, fuj))
+                db.commit()
+            elif(record == 'stopFILE'):
+                fo = open("static/files/test.txt", "a+");
+                fo.write("%s\r\n" %fuj);
           dataList = []
           dataCounter = 0
         socketio.emit('my_response',
-                      {'data': prem, 'count': count},
+                      {'data': prem, 'count': count, 't': timestamp},
                       namespace='/test')  
     db.close()
 
@@ -71,8 +76,44 @@ def index():
 @socketio.on('my_event', namespace='/test')
 def test_message(message):   
     session['receive_count'] = session.get('receive_count', 0) + 1 
+    cursor = db.cursor()
+    cursor.execute("SELECT id FROM graph")
+    idsDB = cursor.fetchall()
+    fo = open("static/files/test.txt", "r");
+    idsFILE = len(fo.readlines())
+    print(idsFILE)
     emit('my_response',
-         {'data': message['value'], 'count': session['receive_count']})
+         {'data': message['value'], 'count': session['receive_count'], 'idsDB': idsDB, 'idsFILE': idsFILE, 'initial': 1})
+
+@socketio.on('db_event', namespace='/test')
+def db_message(message):
+    print(message['value'] == 'startDB')
+    if(message['value'] == 'startDB'):
+        session['record'] = 'start'   
+    else:
+        session['record'] = 'stopDB'
+
+
+@socketio.on('file_event', namespace='/test')
+def file_message(message):   
+    if(message['value'] == 'startFILE'):
+        session['record'] = 'start'   
+    else:
+        session['record'] = 'stopFILE' 
+
+@socketio.on('get_db_event', namespace='/test')
+def get_db_message(message):
+    cursor = db.cursor()
+    cursor.execute("SELECT hodnoty FROM graph where id = %s", message['db_id'])
+    data = cursor.fetchone()
+    emit('db_response', {'data': data})
+
+@socketio.on('get_file_event', namespace='/test')
+def get_file_message(message):
+    fo = open("static/files/test.txt", "r");
+    rows = fo.readlines()
+    data = rows[int(message['file_id'])-1]
+    emit('file_response', {'data': data})
 
 @socketio.on('disconnect_request', namespace='/test')
 def disconnect_request():

@@ -1,50 +1,247 @@
 <!DOCTYPE HTML>
 <html>
- <head>
-  <title>Flask-SocketIO Test</title>
-   <script type="text/javascript" src="//code.jquery.com/jquery-1.4.2.min.js"></script>
-   <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.5/socket.io.min.js"></script>
-   <script type="text/javascript" charset="utf-8">
-     $(document).ready(function() {
-      namespace = '/test';
-      var socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port + namespace);
 
-      socket.on('connect', function() {
-        socket.emit('my_event', {data: 'I\'m connected!', value: 1}); });
-
-      socket.on('my_response', function(msg) {
-        console.log(msg.data);
-        $('#log').append('Received #'+msg.count+': '+msg.data+'<br>').html(); });
-
-      $('#buttonVal').click(function(event) {
-          socket.emit('db_event', {value: $('#buttonVal').val()});
-          if ($(this).val() == "start") {
-            $(this).val("stop");
-            $(this).text("Stop");
-          }
-          else {
-            $(this).val("start");
-            $(this).text("Start");
-          }
-          return false; }); 
-      $('form#disconnect').submit(function(event) {
-          socket.emit('disconnect_request');
-          return false; });         
+<head>
+    <title>Flask-SocketIO Test</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script src="static/libs/plotly-latest.min.js"></script>
+    <script src="static/libs/gauge.min.js"></script>
+    <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.5/socket.io.min.js"></script>
+    
+    <script type="text/javascript" charset="utf-8">
+        $(document).ready(function() {
+          namespace = '/test';
+          var socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port + namespace);
+    
+          Plotly.newPlot('plotdiv', [{
+            y:[[]],
+            x:[[]]
+          }]);
+          Plotly.newPlot('plotdivFILE', [{
+            y:[[]],
+            x:[[]]
+          }]);
+          var gauge = new RadialGauge({
+          renderTo: 'canvasID',
+          width: 300,
+          height: 300,
+          units: "V",
+          minValue: 0,
+          maxValue: 5,
+          majorTicks: [
+              "0",
+              "0.5",
+              "1.0",
+              "1.5",
+              "2.0",
+              "2.5",
+              "3.0",
+              "3.5",
+              "4.0",
+              "4.5",
+              "5.0"
+          ],
+          minorTicks: 2,
+          strokeTicks: true,
+          highlights: [
+              {
+                  "from": 4.0,
+                  "to": 5.0,
+                  "color": "rgba(200, 50, 50, .75)"
+              }
+          ],
+          colorPlate: "#fff",
+          borderShadowWidth: 0,
+          borders: false,
+          needleType: "arrow",
+          needleWidth: 2,
+          needleCircleSize: 7,
+          needleCircleOuter: true,
+          needleCircleInner: false,
+          animationDuration: 500,
+          animationRule: "linear"
       });
+          gauge.draw();
+    
+          socket.on('connect', function() {
+            socket.emit('my_event', {data: 'I\'m connected!', value: 1}); });
+    
+          socket.on('my_response', function(msg) {
+            if(!msg.initial){
+              const data = JSON.parse(msg.data);
+              Plotly.extendTraces('plotdiv', {
+                y:[[msg.data]],
+                x:[[new Date(msg.t)]]
+              }, [0]);
+              $('#log').append('Received #'+msg.count+': '+msg.data+'<br>').html(); 
+              gauge.value = msg.data
+            }else{
+              $.each(msg.idsDB, function(i, item){
+                  $("#dbSelect").append($('<option>', {
+                      value: item,
+                      text: item
+                  }));
+              });
+              for(let i = 0; i<msg.idsFILE;i++){
+                  $("#fileSelect").append($('<option>', {
+                      value: i+1,
+                      text: i+1
+                  }));
+              }
+            }
+          });
+    
+          socket.on('db_response', function(msg) {
+            let dataJSON = JSON.parse(msg.data);
+            var t = [], voltage = [];
+            $.each(dataJSON, function(i, item){
+              t.push(new Date(item.t));
+              voltage.push(item.y);
+            })
+            Plotly.newPlot('plotdivDB', [{
+              y:voltage,
+              x:t
+            }]);
+          });
+    
+          socket.on('file_response', function(msg) {
+            let dataJSON = JSON.parse(msg.data);
+            var t = [], voltage = [];
+            $.each(dataJSON, function(i, item){
+              t.push(new Date(item.t));
+              voltage.push(item.y);
+            })
+            Plotly.newPlot('plotdivFILE', [{
+              y:voltage,
+              x:t
+            }]);
+          });
+    
+          $('#buttonValDB').click(function(event) {
+              socket.emit('db_event', {value: $('#buttonValDB').val()});
+              if ($(this).val() == "startDB") {
+                $(this).val("stopDB");
+                $(this).removeClass("btn-success");
+                $(this).addClass("btn-danger");
+                $(this).text("Stop recording to DB");
+              }
+              else {
+                $(this).val("startDB");
+                $(this).addClass("btn-success");
+                $(this).removeClass("btn-danger");
+                $(this).text("Start recording to DB");
+              }
+              return false; 
+          });
+          
+          $('#buttonValFile').click(function(event) {
+              socket.emit('file_event', {value: $('#buttonValFile').val()});
+              if ($(this).val() == "startFILE") {
+                $(this).val("stopFILE");
+                $(this).removeClass("btn-success");
+                $(this).addClass("btn-danger");
+                $(this).text("Stop recording to file.");
+              }
+              else {
+                $(this).val("startFILE");
+                $(this).addClass("btn-success");
+                $(this).removeClass("btn-danger");
+                $(this).text("Start recording to file");
+              }
+              return false; 
+          }); 
+          
+          $('#dbSelect').change(function(event){
+            socket.emit('get_db_event', {db_id: $(event.target).val()});
+          })
+          
+          $('#fileSelect').change(function(event){
+            socket.emit('get_file_event', {file_id: $(event.target).val()});
+          })
+          
+          $('form#disconnect').submit(function(event) {
+              socket.emit('disconnect_request');
+              return false; });         
+          });
     </script>
- </head>
- <body>
-  <h1>Flask-SocketIO Test</h1>
-  <h2>Send:</h2>
-  <form id="emit" method="POST" action='#'>
-    <input type="text" name="emit_value" id="emit_value" placeholder="Amplituda">
-    <input type="submit" value="Echo">
-  </form>
-  <button id="buttonVal" type="submit" value="start">Start</button>
-  <form id="disconnect" method="POST" action="#">
-    <input type="submit" value="Disconnect">
-  </form> 
-  <h2>Receive:</h2>
-  <div id="log"></div>
- </body>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Flask-SocketIO Test</h1>
+
+        <ul class="nav nav-tabs" role="tablist">
+          <li class="nav-item">
+            <a class="nav-link active" data-toggle="tab" href="#home">Domov</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-toggle="tab" href="#menu1">Live Graf</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-toggle="tab" href="#menu2">Cifernik</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-toggle="tab" href="#menu3">Databaza</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-toggle="tab" href="#menu4">Subor</a>
+          </li>
+        </ul>
+
+        <div class="tab-content">
+            <div id="home" class="container tab-pane active">
+                <h3>Live data</h3>
+                <div>
+                    <form id="disconnect" method="POST" action="#">
+                        <input type="submit" value="Disconnect">
+                    </form>
+                    <h2>Received:</h2>
+                    <div id="log"></div>
+                </div>
+            </div>
+            <div id="menu1" class="container tab-pane fade">
+                <h3>Live Graf</h3>
+                <div id="plotdiv" style="width:600px;height:250px;"></div>
+            </div>
+            <div id="menu2" class="container tab-pane fade">
+                <h3>Cifernik</h3>
+                <canvas id="canvasID"></canvas>
+            </div>
+            <div id="menu3" class="container tab-pane fade">
+                <h3>Praca s DB</h3>
+                <div class="row">
+                  <div class="col-md-3">
+                    <button id="buttonValDB" type="submit" value="startDB" class="btn btn-success">Start recording for DB</button>
+                  </div>
+                  <div class="col-md-6">
+                    <select class="custom-select" id="dbSelect">
+                      <option selected disabled>Zvolte ID zaznamu</option>
+                    </select>
+                  </div>
+                </div>
+                <div id="plotdivDB" style="width:600px;height:250px;"></div>              
+            </div>
+            <div id="menu4" class="container tab-pane fade">
+                <h3>Praca so suborom</h3>
+                <div class="row">
+                  <div class="col-md-3">
+                <button id="buttonValFile" type="submit" value="startFILE" class="btn btn-success">Start recording for File</button>
+                  </div>
+                  <div class="col-md-6">
+                    <select class="custom-select" id="fileSelect">
+                      <option selected disabled>Zvolte ID zaznamu</option>
+                    </select>
+                  </div>
+                </div>
+                <div id="plotdivFILE" style="width:600px;height:250px;"></div>               
+            </div>
+        </div>
+    </div>
+</body>
+
 </html>
