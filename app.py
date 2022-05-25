@@ -61,7 +61,9 @@ def background_thread(args):
                 db.commit()
             elif(record == 'stopFILE'):
                 fo = open("static/files/test.txt", "a+");
+                print(fo)
                 fo.write("%s\r\n" %fuj);
+                fo.close()
           dataList = []
           dataCounter = 0
         socketio.emit('my_response',
